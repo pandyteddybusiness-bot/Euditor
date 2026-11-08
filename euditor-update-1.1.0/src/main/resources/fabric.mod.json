@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "euditor",
+  "version": "${version}",
+  "name": "Euditor",
+  "description": "Euditor - lightweight client: HUD modules, keystrokes, zoom, auto sprint and built-in entity culling.",
+  "authors": ["Euditor"],
+  "license": "MIT",
+  "icon": "assets/euditor/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["dev.euditor.EuditorClient"]
+  },
+  "mixins": ["euditor.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.19.1",
+    "minecraft": "~26.2",
+    "java": ">=25",
+    "fabric-api": "*"
+  }
+}

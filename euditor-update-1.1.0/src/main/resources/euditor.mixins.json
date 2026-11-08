@@ -1,0 +1,13 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "dev.euditor.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [],
+  "client": [
+    "EntityRendererMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 0
+  }
+}
