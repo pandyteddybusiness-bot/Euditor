@@ -1,0 +1,223 @@
+# ============================================================================
+# UltraCore configuration - safe defaults for a Paper/Purpur server with 1 GB RAM
+# Every module can be switched off independently with "enabled: false".
+# Apply changes with /ultracore reload (all temporary changes UltraCore made -
+# view distance, random tick speed, AFK simulation distance, mob awareness - are
+# restored first, then re-applied from the new config).
+# ============================================================================
+
+settings:
+  # Worlds UltraCore must not touch at all (by world folder name).
+  excluded-worlds: []
+
+# ---------------------------------------------------------------------------
+# Shared chunk scanner. ONE repeating task serves Entity/Mob/Item/BlockEntity/
+# ChunkUnloading. It snapshots the loaded chunks once per cycle, then visits at
+# most "chunks-per-tick" of them per tick. It never loads or generates chunks.
+# ---------------------------------------------------------------------------
+scanner:
+  interval-ticks: 100        # pause between full cycles (100 ticks = 5 s). Higher = less CPU, slower reaction.
+  chunks-per-tick: 6         # chunks visited per tick while a cycle is running. Halved automatically at critical pressure.
+
+# ---------------------------------------------------------------------------
+# Adaptive performance system. Samples every interval and derives a pressure
+# level: 0 normal, 1 elevated, 2 critical. A level is entered after
+# "confirm-samples" consecutive bad samples and left after "recover-samples"
+# consecutive samples that are clearly below the (stricter) exit thresholds, so
+# settings never oscillate. Nothing changes between samples.
+# Exit thresholds: TPS +0.5 / +1.0, MSPT x0.85, heap -5 points, GC x0.7.
+# ---------------------------------------------------------------------------
+adaptive:
+  enabled: true
+  interval-ticks: 200             # 10 s
+  confirm-samples: 2              # 20 s of bad readings before tightening
+  recover-samples: 3              # 30 s of good readings before relaxing one level
+  tps-warn: 18.5                  # 1-minute TPS average below this = elevated
+  tps-critical: 16.0              # ... below this = critical
+  mspt-warn: 40                   # average tick time (ms) above this = elevated (needs Paper)
+  mspt-critical: 50
+  heap-warn-percent: 80           # old-generation occupancy as % of max heap (a better signal than "used", which includes garbage)
+  heap-critical-percent: 90
+  gc-overhead-warn-percent: 8     # % of wall time spent in GC during the last interval
+  gc-overhead-critical-percent: 20
+
+modules:
+
+  # -------------------------------------------------------------------------
+  # 1, 5  MemoryOptimizer: leak guard + emergency response
+  # -------------------------------------------------------------------------
+  memory:
+    enabled: true
+    leak-check-interval-ticks: 6000    # drop stale per-player tracking entries (safety net; entries are also removed on quit)
+    emergency-optimize: true           # on CRITICAL pressure run every module's one-shot pass
+    emergency-cooldown-seconds: 120    # minimum time between emergency passes
+
+  # -------------------------------------------------------------------------
+  # 2  CpuOptimizer: AFK players get a smaller simulation distance
+  # -------------------------------------------------------------------------
+  cpu:
+    enabled: true
+    afk-seconds: 120                   # standing still this long = AFK (halved under pressure)
+    afk-simulation-distance: 3         # 2-32. Restored the moment the player moves.
+
+  # -------------------------------------------------------------------------
+  # 3, 4  GarbageCollectionOptimizer: GC overhead monitoring + idle GC
+  # -------------------------------------------------------------------------
+  gc:
+    enabled: true
+    warn-overhead-percent: 10          # log (max once / 10 min) when GC takes more than this share of time
+    idle-gc: true                      # run ONE System.gc() when nobody is online (never with players online)
+    idle-minutes: 10                   # server must have been empty this long
+    idle-gc-cooldown-minutes: 30
+    idle-gc-min-heap-percent: 50       # only if old-gen occupancy is at least this high
+
+  # -------------------------------------------------------------------------
+  # 6, 9  EntityOptimizer: per-chunk caps and faster far despawn
+  # Never removed: named, leashed, tamed, ridden, in a raid, villagers, bosses,
+  # entities tagged by other plugins, anything in excluded-types.
+  # -------------------------------------------------------------------------
+  entity:
+    enabled: true
+    max-hostile-per-chunk: 24          # 0 = no cap. Only despawnable (non-persistent) hostiles are removed. x0.75 / x0.5 under pressure.
+    max-animals-per-chunk: 48          # 0 = no cap. Excess animals are removed (never named/tamed/leashed). Big farms may need a higher value.
+    far-despawn-distance: 96           # despawnable mobs with no player within this many blocks are removed. 0 = off.
+    excluded-types: [VILLAGER, WANDERING_TRADER, IRON_GOLEM, SNOW_GOLEM, ENDER_DRAGON, WITHER, WARDEN, ELDER_GUARDIAN, ALLAY]
+
+  # -------------------------------------------------------------------------
+  # 7, 8  MobOptimizer: AI throttling + natural spawn limits
+  # -------------------------------------------------------------------------
+  mob:
+    enabled: true
+    ai-awareness:
+      enabled: true                    # Mob#setAware(false) for mobs far from every player (Paper)
+      radius: 48                       # blocks; x0.8 / x0.65 under pressure
+      excluded-types: [VILLAGER, WANDERING_TRADER, IRON_GOLEM, ENDER_DRAGON, WITHER, WARDEN, ALLAY]
+    spawn-limit:
+      enabled: true
+      include-spawners: false          # monster spawners are limited too when true
+      max-hostile-per-chunk: 10        # natural spawn is cancelled when the chunk already has this many. x0.75 / x0.5 under pressure.
+      max-passive-per-chunk: 20
+      max-spawn-distance: 96           # cancel natural spawns farther than this from every player. 0 = off.
+
+  # -------------------------------------------------------------------------
+  # 10, 11  ItemOptimizer: merge dropped items, cap items per chunk
+  # -------------------------------------------------------------------------
+  item:
+    enabled: true
+    merge:
+      enabled: true
+      radius: 3.0                      # blocks (vanilla ~0.5). Larger = fewer entities.
+      scan-limit-per-chunk: 64         # max items compared per chunk per cycle (bounds the O(n^2) cost)
+    cleanup:
+      enabled: true
+      max-items-per-chunk: 96          # oldest items above this are removed. x0.5 / x0.25 under pressure (never below 16).
+      max-age-seconds: 0               # remove items older than this (vanilla despawns at 300). 0 = leave to vanilla.
+      protect-named: true
+      protect-enchanted: true
+      protected-materials: [ELYTRA, TOTEM_OF_UNDYING, NETHER_STAR, DRAGON_EGG, ENCHANTED_GOLDEN_APPLE, BEACON, NETHERITE_INGOT, TRIDENT]   # shulker boxes are always protected
+
+  # -------------------------------------------------------------------------
+  # 12  HopperOptimizer: load shedding for hopper transfers (nothing is lost)
+  # -------------------------------------------------------------------------
+  hopper:
+    enabled: true
+    base-interval-ticks: 8             # vanilla cooldown. Under pressure the interval becomes x2 (elevated) / x3 (critical). Identical to vanilla at normal pressure.
+    prune-interval-ticks: 6000
+
+  # -------------------------------------------------------------------------
+  # 13  RedstoneOptimizer: hotspot detection, optional emergency brake
+  # -------------------------------------------------------------------------
+  redstone:
+    enabled: true
+    mode: WARN                         # WARN = log hotspots only (never changes redstone). SUPPRESS = also drop updates over the limit while server pressure >= elevated (changes behavior!)
+    window-ticks: 20
+    max-updates-per-chunk-per-window: 1500
+    warn-cooldown-ticks: 6000
+
+  # -------------------------------------------------------------------------
+  # 14  BlockEntityOptimizer: per-chunk placement limits + hotspot log
+  # Existing blocks are never touched. Permission ultracore.bypass.blockentity exempts a player.
+  # -------------------------------------------------------------------------
+  blockentity:
+    enabled: true
+    limits-per-chunk:
+      HOPPER: 64
+      FURNACE: 48
+      BLAST_FURNACE: 32
+      SMOKER: 32
+    warn-total-per-chunk: 150          # log chunks holding more block entities than this. 0 = off.
+    warn-cooldown-ticks: 12000
+
+  # -------------------------------------------------------------------------
+  # 15  RandomTickOptimizer: lowers gamerule randomTickSpeed under pressure
+  # -------------------------------------------------------------------------
+  randomtick:
+    enabled: true
+    elevated-percent: 66               # % of the admin's value used at elevated pressure
+    critical-percent: 33
+    min-speed: 1                       # never go below this (0 would freeze crop growth)
+
+  # -------------------------------------------------------------------------
+  # 16, 18  ChunkLoadingOptimizer: adaptive distances, fast-travel throttle, orphan-load diagnostics
+  # -------------------------------------------------------------------------
+  chunkloading:
+    enabled: true
+    adaptive-distance:
+      enabled: true                    # lower world view/simulation distance under pressure, restore when it clears
+      min-view-distance: 5
+      min-simulation-distance: 3
+      elevated-view-reduction: 2
+      critical-view-reduction: 4
+    fast-travel:
+      enabled: true                    # reduce a fast mover's view distance (elytra/ice boats) so they don't trigger chunk-generation storms
+      speed-blocks-per-second: 25
+      view-distance: 5
+      only-under-pressure: true        # false = always throttle fast travellers
+    debug-orphan-loads: false          # true = attribute chunk loads that have no player nearby to the calling plugin (small CPU cost)
+
+  # -------------------------------------------------------------------------
+  # 17  ChunkUnloadingOptimizer: ask the server to unload idle chunks sooner
+  # Only chunks with no player within view-distance + margin, not force-loaded, no plugin tickets.
+  # -------------------------------------------------------------------------
+  chunkunloading:
+    enabled: true
+    grace-seconds: 45                  # idle this long before requesting unload (halved under pressure)
+    keep-radius-extra-chunks: 2        # safety margin beyond the world's view distance
+    max-requests-per-cycle: 48
+
+  # -------------------------------------------------------------------------
+  # 19  ChunkGenerationOptimizer: bounded generation queue (pregen + optional prefetch)
+  # Commands: /ultracore generation [status|pregen <radius> [world]|stop|pause|resume]
+  # -------------------------------------------------------------------------
+  chunkgeneration:
+    enabled: true
+    max-queue-size: 512                # hard limit on queued requests
+    max-concurrent-generations: 2      # simultaneous in-flight requests (1 while pressure >= elevated)
+    max-starts-per-run: 1
+    process-interval-ticks: 4
+    pause-at-pressure-level: 2         # all generation pauses at this level (1 = elevated, 2 = critical)
+    pregen-pause-at-pressure-level: 1  # pregeneration pauses earlier than player-priority requests
+    pregen-max-loaded-chunks: 600      # pregen waits while the world has more loaded chunks than this
+    max-pregen-radius-chunks: 256
+    prefetch:
+      enabled: false                   # queue the chunks ahead of fast-moving players (PLAYER priority). Uses more RAM/CPU: opt in.
+      chunks-ahead: 2
+      min-speed-blocks-per-second: 6
+
+  # -------------------------------------------------------------------------
+  # 20  ChunkSavingOptimizer
+  # Default: observe only. Chunks are ALWAYS saved normally when they unload.
+  # managed-autosave takes over the periodic world.save() (staggered, deferred under load).
+  # READ THE README SECTION "Managed autosave" BEFORE ENABLING.
+  # -------------------------------------------------------------------------
+  chunksaving:
+    enabled: true
+    managed-autosave:
+      enabled: false
+      interval-seconds: 300
+      stagger-seconds: 20
+      defer-at-pressure-level: 2
+      max-defer-seconds: 600           # a save is never postponed longer than this past its due time
+      save-when-world-empties: true
+      skip-unchanged-empty-worlds: false
+      final-save-on-disable: true

@@ -1,0 +1,45 @@
+name: UltraCore
+main: com.ultracore.UltraCore
+version: '${project.version}'
+api-version: '1.21'
+description: Modular low-memory optimization suite for Paper/Purpur
+authors: [UltraCore]
+commands:
+  ultracore:
+    description: UltraCore main command
+    usage: /<command> [status|reload|optimize|chunks|memory|entities|generation]
+    aliases: [uc]
+    permission: ultracore.command
+permissions:
+  ultracore.command:
+    description: Use /ultracore
+    default: op
+  ultracore.status:
+    default: op
+  ultracore.reload:
+    default: op
+  ultracore.optimize:
+    default: op
+  ultracore.chunks:
+    default: op
+  ultracore.memory:
+    default: op
+  ultracore.entities:
+    default: op
+  ultracore.generation:
+    default: op
+  ultracore.bypass.blockentity:
+    description: Ignore per-chunk block entity placement limits
+    default: op
+  ultracore.*:
+    default: op
+    children:
+      ultracore.command: true
+      ultracore.status: true
+      ultracore.reload: true
+      ultracore.optimize: true
+      ultracore.chunks: true
+      ultracore.memory: true
+      ultracore.entities: true
+      ultracore.generation: true
+      ultracore.bypass.blockentity: true
